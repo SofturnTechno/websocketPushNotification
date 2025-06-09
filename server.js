@@ -1,31 +1,34 @@
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: 3001 });
+// Use Render-provided port, or fallback to 3001 locally
+const port = process.env.PORT || 3001;
+
+const wss = new WebSocket.Server({ port });
 
 wss.on('connection', ws => {
   console.log('Client connected');
 
+  ws.send('Welcome to the WebSocket server!');
+
   ws.on('message', message => {
     console.log('Received from client:', message);
 
-    // You can parse JSON here
+    // Parse JSON safely
     try {
       const data = JSON.parse(message);
       console.log('Parsed data:', data);
-      // Process data as you want
+
+      // Example response
+      ws.send(JSON.stringify({ status: 'ok', received: data }));
     } catch (e) {
       console.error('Invalid JSON', e);
+      ws.send(JSON.stringify({ status: 'error', message: 'Invalid JSON' }));
     }
-
-    // Optionally send response
-    ws.send('Data received');
   });
 
   ws.on('close', () => {
     console.log('Client disconnected');
   });
-
-  ws.send('Welcome to the WebSocket server!');
 });
 
-console.log('WebSocket server running on ws://localhost:3001');
+console.log(`WebSocket server running on port ${port}`);
