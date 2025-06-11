@@ -1,10 +1,12 @@
 const WebSocket = require('ws');
 const port = process.env.PORT || 3001;
-const wss = new WebSocket.Server({ port });
+const isProd = process.env.NODE_ENV === 'production';
 
+const wss = new WebSocket.Server({ port });
 const clientsInfo = new Map(); // ws => { user data }
 
 function log(message, data = null) {
+  if (isProd) return; // skip logs in production
   const time = new Date().toISOString();
   console.log(`[${time}] ${message}`);
   if (data) {
@@ -12,6 +14,12 @@ function log(message, data = null) {
   }
 }
 
+// Heartbeat to detect and terminate dead clients
+function heartbeat() {
+  this.isAlive = true;
+}
+
+// Register client data
 function RegisterClient(ws, data) {
   const userInfo = {
     domain: data.domain,
@@ -22,12 +30,11 @@ function RegisterClient(ws, data) {
   };
 
   clientsInfo.set(ws, userInfo);
-
   log(`✅ Client Registered`, userInfo);
-
   ws.send(JSON.stringify({ status: 'registered' }));
 }
 
+// Broadcast notification to matching clients
 function SendNotification(filter, message) {
   log(`📢 Broadcasting Message`, { filter, message });
 
@@ -41,14 +48,12 @@ function SendNotification(filter, message) {
       const info = clientsInfo.get(client);
 
       const match = Object.entries(filter).every(([key, val]) => {
-        if (!val) return true; // skip null/undefined filters
+        if (!val) return true; // skip null filters
         return info[key] === val;
       });
 
       if (match) {
         matchedCount++;
-        log(`➡️ Sending to client`, info);
-
         client.send(JSON.stringify({
           type: 'notification',
           message,
@@ -63,7 +68,11 @@ function SendNotification(filter, message) {
   }
 }
 
+// Setup connection
 wss.on('connection', ws => {
+  ws.isAlive = true;
+  ws.on('pong', heartbeat);
+
   log('🔌 Client connected');
 
   ws.on('message', message => {
@@ -100,11 +109,32 @@ wss.on('connection', ws => {
     }
   });
 
-  ws.on('close', () => {
-    const info = clientsInfo.get(ws);
+  // Handle client disconnect
+  function cleanup() {
     clientsInfo.delete(ws);
-    log('❌ Client disconnected', info || {});
-  });
+    log('❌ Client disconnected/cleaned up');
+  }
+
+  ws.on('close', cleanup);
+  ws.on('error', cleanup);
 });
+
+// Interval to clean up dead sockets
+const interval = setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (!ws.isAlive) {
+      clientsInfo.delete(ws);
+      ws.terminate();
+      log('🧹 Terminated dead connection');
+      return;
+    }
+
+    ws.isAlive = false;
+    ws.ping(() => {});
+  });
+}, 30000); // every 30 seconds
+
+// Clean shutdown
+wss.on('close', () => clearInterval(interval));
 
 log(`🚀 WebSocket server running on port ${port}`);
