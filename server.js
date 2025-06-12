@@ -36,7 +36,7 @@ function RegisterClient(ws, data) {
 
 // Broadcast notification to matching clients
 function SendNotification(filter, message) {
-  log(`📢 Broadcasting Message`, { filter, message });
+  console.log(`📢 Broadcasting Message`, { filter, message });
 
   let matchedCount = 0;
 
