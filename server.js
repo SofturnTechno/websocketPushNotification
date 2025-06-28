@@ -35,57 +35,38 @@ function RegisterClient(ws, data) {
 }
 
 // Broadcast notification to matching clients
-const { v4: uuidv4 } = require('uuid'); // Install with: npm install uuid
+function SendNotification(filter, message) {
+  console.log(`📢 Broadcasting Message`, { filter, message });
 
-const pendingAcks = new Map(); // message_id => { timeout, user_id }
-
-function sendPushNotification(filter, message) {
-  const messageId = uuidv4();
-  message.id = messageId;
-
-  console.log(`📢 Sending Push Notification`, { filter, message });
-
-  let matched = 0;
+  let matchedCount = 0;
 
   wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN && clientsInfo.has(client)) {
+    if (
+      client.readyState === WebSocket.OPEN &&
+      clientsInfo.has(client)
+    ) {
       const info = clientsInfo.get(client);
 
       const match = Object.entries(filter).every(([key, val]) => {
-        if (!val) return true;
+        if (!val) return true; // skip null filters
         return info[key] === val;
       });
 
       if (match) {
-        matched++;
-        try {
-          client.send(JSON.stringify({
-            type: 'notification',
-            message,
-            from: 'server',
-          }));
-
-          // Wait for ACK within 10s
-          const timeout = setTimeout(() => {
-            console.warn(`❌ No ACK for message ${messageId} from user ${info.user_id}`);
-            pendingAcks.delete(messageId);
-          }, 2000);
-
-          pendingAcks.set(messageId, { timeout, user_id: info.user_id });
-
-        } catch (err) {
-          console.error(`❌ Error sending message to user ${info.user_id}:`, err.message);
-        }
+        matchedCount++;
+        client.send(JSON.stringify({
+          type: 'notification',
+          message,
+          from: 'server',
+        }));
       }
     }
   });
 
-  if (matched === 0) {
-    console.warn(`⚠️ No clients matched for push notification`, filter);
+  if (matchedCount === 0) {
+    log(`⚠️ No clients matched filter`, filter);
   }
 }
-
-
 
 // Setup connection
 wss.on('connection', ws => {
