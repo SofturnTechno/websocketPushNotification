@@ -69,7 +69,7 @@ function sendPushNotification(filter, message) {
           const timeout = setTimeout(() => {
             console.warn(`❌ No ACK for message ${messageId} from user ${info.user_id}`);
             pendingAcks.delete(messageId);
-          }, 10000);
+          }, 2000);
 
           pendingAcks.set(messageId, { timeout, user_id: info.user_id });
 
