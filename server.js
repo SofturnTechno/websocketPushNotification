@@ -1,25 +1,54 @@
 const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
+
 const port = process.env.PORT || 3001;
 const isProd = process.env.NODE_ENV === 'production';
+const pendingFile = path.join(__dirname, 'pushNotificationPending.json');
 
 const wss = new WebSocket.Server({ port });
 const clientsInfo = new Map(); // ws => { user data }
 
 function log(message, data = null) {
-  if (isProd) return; // skip logs in production
+  if (isProd) return;
   const time = new Date().toISOString();
   console.log(`[${time}] ${message}`);
-  if (data) {
-    console.log(JSON.stringify(data, null, 2));
-  }
+  if (data) console.log(JSON.stringify(data, null, 2));
 }
 
-// Heartbeat to detect and terminate dead clients
 function heartbeat() {
   this.isAlive = true;
 }
 
-// Register client data
+function ensurePendingFile() {
+  if (!fs.existsSync(pendingFile)) {
+    fs.writeFileSync(pendingFile, '[]');
+  }
+}
+
+function loadPendingMessages() {
+  ensurePendingFile();
+  return JSON.parse(fs.readFileSync(pendingFile, 'utf-8'));
+}
+
+function savePendingMessages(messages) {
+  fs.writeFileSync(pendingFile, JSON.stringify(messages, null, 2));
+}
+
+function queuePendingMessage(messageObj) {
+  const current = loadPendingMessages();
+  current.push(messageObj);
+  savePendingMessages(current);
+}
+
+function partition(array, predicate) {
+  const matched = [], unmatched = [];
+  for (const item of array) {
+    (predicate(item) ? matched : unmatched).push(item);
+  }
+  return [matched, unmatched];
+}
+
 function RegisterClient(ws, data) {
   const userInfo = {
     domain: data.domain,
@@ -31,44 +60,66 @@ function RegisterClient(ws, data) {
 
   clientsInfo.set(ws, userInfo);
   log(`✅ Client Registered`, userInfo);
-  ws.send(JSON.stringify({ status: 'registered' }));
-}
 
-// Broadcast notification to matching clients
-function SendNotification(filter, message) {
-  console.log(`📢 Broadcasting Message`, { filter, message });
+  // Send pending messages
+  const allPending = loadPendingMessages();
+  const [toSend, remaining] = partition(allPending, item =>
+    item.user_id === userInfo.user_id &&
+    item.domain === userInfo.domain &&
+    item.platform === userInfo.platform &&
+    item.role === userInfo.role
+  );
 
-  let matchedCount = 0;
-
-  wss.clients.forEach(client => {
-    if (
-      client.readyState === WebSocket.OPEN &&
-      clientsInfo.has(client)
-    ) {
-      const info = clientsInfo.get(client);
-
-      const match = Object.entries(filter).every(([key, val]) => {
-        if (!val) return true; // skip null filters
-        return info[key] === val;
+  toSend.forEach(item => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'notification', message: item.message }), (err) => {
+        if (err) {
+          log(`❌ Send failed. Re-adding to pending`, item);
+          queuePendingMessage(item);
+        } else {
+          log(`✅ Pending message delivered to ${userInfo.user_id}`);
+        }
       });
-
-      if (match) {
-        matchedCount++;
-        client.send(JSON.stringify({
-          type: 'notification',
-          message,
-          from: 'server',
-        }));
-      }
+    } else {
+      log(`❌ WebSocket not open for ${userInfo.user_id}, re-queuing message`);
+      queuePendingMessage(item);
     }
   });
 
-  if (matchedCount === 0) {
-    log(`⚠️ No clients matched filter`, filter);
+  savePendingMessages(remaining);
+  ws.send(JSON.stringify({ status: 'registered' }));
+}
+
+function SendNotification(filter, message) {
+  console.log(`📢 Broadcasting Message`, { filter, message });
+
+  let matched = false;
+
+  wss.clients.forEach(client => {
+    if (client.readyState !== WebSocket.OPEN || !clientsInfo.has(client)) return;
+
+    const info = clientsInfo.get(client);
+    const match = Object.entries(filter).every(([key, val]) => !val || info[key] === val);
+
+    if (match) {
+      matched = true;
+      client.send(JSON.stringify({ type: 'notification', message }), (err) => {
+        if (err) {
+          log(`❌ Failed to send. Queuing for ${info.user_id}`);
+          queuePendingMessage({ ...filter, message });
+        } else {
+          log(`✅ Notification sent to ${info.user_id}`);
+        }
+      });
+    }
+  });
+
+  if (!matched) {
+    log(`⚠️ No matching client connected. Queuing message`);
+    queuePendingMessage({ ...filter, message });
   }
 }
 
-// Setup connection
 wss.on('connection', ws => {
   ws.isAlive = true;
   ws.on('pong', heartbeat);
@@ -76,65 +127,48 @@ wss.on('connection', ws => {
   log('🔌 Client connected');
 
   ws.on('message', message => {
-    log('📥 Message received from client', { raw: message });
-
     try {
       const data = JSON.parse(message);
-
       switch (data.type) {
         case 'register':
           RegisterClient(ws, data.user || {});
           break;
-
         case 'broadcast':
-          const {
-            message: msg,
-            domain,
-            platform,
-            user_id,
-            role
-          } = data;
-
-          SendNotification({ domain, platform, user_id, role }, msg);
-          ws.send(JSON.stringify({ status: 'broadcast_sent' }));
+          SendNotification(data, data.message);
           break;
-
         default:
           ws.send(JSON.stringify({ status: 'error', message: 'Unknown message type' }));
-          log('❌ Unknown message type', data);
       }
-    } catch (e) {
-      log('❌ Error parsing JSON', { error: e.message });
+    } catch (err) {
+      log('❌ Invalid JSON', { error: err.message });
       ws.send(JSON.stringify({ status: 'error', message: 'Invalid JSON' }));
     }
   });
 
-  // Handle client disconnect
-  function cleanup() {
+  ws.on('close', () => {
     clientsInfo.delete(ws);
-    log('❌ Client disconnected/cleaned up');
-  }
+    log('❌ Client disconnected');
+  });
 
-  ws.on('close', cleanup);
-  ws.on('error', cleanup);
+  ws.on('error', () => {
+    clientsInfo.delete(ws);
+    log('❌ Client error');
+  });
 });
 
-// Interval to clean up dead sockets
 const interval = setInterval(() => {
   wss.clients.forEach(ws => {
     if (!ws.isAlive) {
       clientsInfo.delete(ws);
       ws.terminate();
-      log('🧹 Terminated dead connection');
-      return;
+      log('🧹 Terminated dead socket');
+    } else {
+      ws.isAlive = false;
+      ws.ping(() => {});
     }
-
-    ws.isAlive = false;
-    ws.ping(() => {});
   });
-}, 30000); // every 30 seconds
+}, 30000);
 
-// Clean shutdown
 wss.on('close', () => clearInterval(interval));
 
 log(`🚀 WebSocket server running on port ${port}`);
