@@ -41,24 +41,33 @@ function SendNotification(filter, message) {
   let matchedCount = 0;
 
   wss.clients.forEach(client => {
-    if (
-      client.readyState === WebSocket.OPEN &&
-      clientsInfo.has(client)
-    ) {
-      const info = clientsInfo.get(client);
+    const info = clientsInfo.get(client);
 
-      const match = Object.entries(filter).every(([key, val]) => {
-        if (!val) return true; // skip null filters
-        return info[key] === val;
-      });
+    const match = info && Object.entries(filter).every(([key, val]) => {
+      if (!val) return true; // skip null filters
+      return info[key] === val;
+    });
 
-      if (match) {
-        matchedCount++;
-        client.send(JSON.stringify({
-          type: 'notification',
-          message,
-          from: 'server',
-        }));
+    if (match) {
+      if (client.readyState === WebSocket.OPEN) {
+        try {
+          client.send(JSON.stringify({
+            type: 'notification',
+            message,
+            from: 'server',
+          }));
+          matchedCount++;
+        } catch (err) {
+          log('❌ Failed to send message to client', {
+            user: info,
+            error: err.message,
+          });
+        }
+      } else {
+        log('⚠️ Client is disconnected (not OPEN)', {
+          user: info,
+          readyState: client.readyState,
+        });
       }
     }
   });
@@ -67,6 +76,7 @@ function SendNotification(filter, message) {
     log(`⚠️ No clients matched filter`, filter);
   }
 }
+
 
 // Setup connection
 wss.on('connection', ws => {
