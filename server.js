@@ -35,47 +35,56 @@ function RegisterClient(ws, data) {
 }
 
 // Broadcast notification to matching clients
-function SendNotification(filter, message) {
-  console.log(`📢 Broadcasting Message`, { filter, message });
+const { v4: uuidv4 } = require('uuid'); // Install with: npm install uuid
 
-  let matchedCount = 0;
+const pendingAcks = new Map(); // message_id => { timeout, user_id }
+
+function sendPushNotification(filter, message) {
+  const messageId = uuidv4();
+  message.id = messageId;
+
+  console.log(`📢 Sending Push Notification`, { filter, message });
+
+  let matched = 0;
 
   wss.clients.forEach(client => {
-    const info = clientsInfo.get(client);
+    if (client.readyState === WebSocket.OPEN && clientsInfo.has(client)) {
+      const info = clientsInfo.get(client);
 
-    const match = info && Object.entries(filter).every(([key, val]) => {
-      if (!val) return true; // skip null filters
-      return info[key] === val;
-    });
+      const match = Object.entries(filter).every(([key, val]) => {
+        if (!val) return true;
+        return info[key] === val;
+      });
 
-    if (match) {
-      if (client.readyState === WebSocket.OPEN) {
+      if (match) {
+        matched++;
         try {
           client.send(JSON.stringify({
             type: 'notification',
             message,
             from: 'server',
           }));
-          matchedCount++;
+
+          // Wait for ACK within 10s
+          const timeout = setTimeout(() => {
+            console.warn(`❌ No ACK for message ${messageId} from user ${info.user_id}`);
+            pendingAcks.delete(messageId);
+          }, 10000);
+
+          pendingAcks.set(messageId, { timeout, user_id: info.user_id });
+
         } catch (err) {
-          log('❌ Failed to send message to client', {
-            user: info,
-            error: err.message,
-          });
+          console.error(`❌ Error sending message to user ${info.user_id}:`, err.message);
         }
-      } else {
-        log('⚠️ Client is disconnected (not OPEN)', {
-          user: info,
-          readyState: client.readyState,
-        });
       }
     }
   });
 
-  if (matchedCount === 0) {
-    log(`⚠️ No clients matched filter`, filter);
+  if (matched === 0) {
+    console.warn(`⚠️ No clients matched for push notification`, filter);
   }
 }
+
 
 
 // Setup connection
