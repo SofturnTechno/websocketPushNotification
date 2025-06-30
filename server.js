@@ -75,7 +75,7 @@ function RegisterClient(ws, data) {
 
       if (match) {
         matchedCount++;
-        log(`✅ Client matched filter`, { clientId: client._socket.remoteAddress, info });
+        console.log(`✅ Client matched filter`, { clientId: client._socket.remoteAddress, info });
         // Prepare the payload (no need to include unnecessary domain/platform/user_id again)
         const payload = {
           action: 'add_notification',
