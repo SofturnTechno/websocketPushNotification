@@ -59,6 +59,27 @@ function SendNotification(filter, message) {
   console.log(`📢 Broadcasting Message`, { filter, message });
 
   let matchedCount = 0;
+// Send to PHP API to store as pending notification
+      const payload = {
+        action: 'add_notification',
+        message: message,
+        status: 'pending',
+        receiving_status: '0',
+        ...filter // includes domain, platform, user_id, role
+      };
+      console.log('📤 Sending to PHP API', payload);
+      fetch('https://qataraddress.counterbill.com/websocket_push_notification.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(response => {
+        console.log('✅ Stored in DB via API:', response);
+      })
+      .catch(err => {
+        console.error('❌ Error calling API for offline client:', err.message);
+      });
 
   wss.clients.forEach(client => {
     if (
@@ -80,31 +101,10 @@ function SendNotification(filter, message) {
           from: 'server',
         }));
       }
-    } else {
-      // Client not connected or not registered
-      console.log(`❌ Client not ready or missing info`);
+    
+      
 
-      // Send to PHP API to store as pending notification
-      const payload = {
-        action: 'add_notification',
-        message: message,
-        status: 'pending',
-        receiving_status: '0',
-        ...filter // includes domain, platform, user_id, role
-      };
-
-      fetch('https://qataraddress.counterbill.com/websocket_push_notification.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      .then(res => res.json())
-      .then(response => {
-        console.log('✅ Stored in DB via API:', response);
-      })
-      .catch(err => {
-        console.error('❌ Error calling API for offline client:', err.message);
-      });
+      
     }
   });
 
