@@ -8,9 +8,9 @@ const clientsInfo = new Map(); // ws => { user data }
 function log(message, data = null) {
   if (isProd) return; // skip logs in production
   const time = new Date().toISOString();
-  console.log(`[${time}] ${message}`);
+  log(`[${time}] ${message}`);
   if (data) {
-    console.log(JSON.stringify(data, null, 2));
+    log(JSON.stringify(data, null, 2));
   }
 }
 
@@ -46,7 +46,7 @@ function RegisterClient(ws, data) {
   })
     .then(res => res.json())
     .then(response => {
-      console.log('☁️ Sent to PHP API', response);
+      log('☁️ Sent to PHP API', response);
 
       // If pending notifications exist, send them to client
       if (response.pending_notifications && response.pending_notifications.length > 0) {
@@ -63,14 +63,14 @@ function RegisterClient(ws, data) {
       }
     })
     .catch(err => {
-      console.log('❌ Error sending to PHP API', { error: err.message });
+      log('❌ Error sending to PHP API', { error: err.message });
     });
 }
 
 
   // Broadcast notification to matching clients
   function SendNotification(filter, message) {
-    console.log(`📢 Broadcasting Message`, { filter, message });
+    log(`📢 Broadcasting Message`, { filter, message });
     let matchedCount = 0;
   // Send to PHP API to store as pending notification
       
@@ -89,7 +89,7 @@ function RegisterClient(ws, data) {
 
       if (match) {
         matchedCount++;
-        console.log(`✅ Client matched filter`, { clientId: client._socket.remoteAddress, info });
+        log(`✅ Client matched filter`, { clientId: client._socket.remoteAddress, info });
         // Prepare the payload (no need to include unnecessary domain/platform/user_id again)
         const payload = {
           action: 'add_notification',
