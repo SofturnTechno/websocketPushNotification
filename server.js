@@ -27,7 +27,7 @@ function RegisterClient(ws, data) {
     user_id: data.user_id,
     first_name: data.first_name,
     role: data.role,
-    username: data.username || '' // optional if available
+    username: data.username || '' // optional
   };
 
   clientsInfo.set(ws, userInfo);
@@ -35,7 +35,7 @@ function RegisterClient(ws, data) {
 
   ws.send(JSON.stringify({ status: 'registered' }));
 
-  // Send POST request to PHP server
+  // Send POST request to PHP server to add/check client & get pending notifications
   fetch('https://qataraddress.counterbill.com/websocket_push_notification.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -44,13 +44,27 @@ function RegisterClient(ws, data) {
       ...userInfo
     })
   })
-  .then(res => res.json())
-  .then(response => {
-    console.log('☁️ Sent to PHP API', response);
-  })
-  .catch(err => {
-    console.log('❌ Error sending to PHP API', { error: err.message });
-  });
+    .then(res => res.json())
+    .then(response => {
+      console.log('☁️ Sent to PHP API', response);
+
+      // If pending notifications exist, send them to client
+      if (response.pending_notifications && response.pending_notifications.length > 0) {
+        response.pending_notifications.forEach(notif => {
+          ws.send(JSON.stringify({
+            type: 'notification',
+            insertId: notif.id,          // notification id in DB
+            message: notif.message,      // already parsed JSON from PHP
+            status: notif.status,
+            from: 'server',
+            user_id: userInfo.user_id
+          }));
+        });
+      }
+    })
+    .catch(err => {
+      console.log('❌ Error sending to PHP API', { error: err.message });
+    });
 }
 
 
@@ -172,7 +186,7 @@ wss.on('connection', ws => {
     }
   });
 
-  // Handle client disconnect
+  // Handle client disconnect 
   function cleanup() {
     clientsInfo.delete(ws);
     log('❌ Client disconnected/cleaned up');
