@@ -98,7 +98,13 @@ wss.on('connection', ws => {
           SendNotification({ domain, platform, user_id, role }, msg);
           ws.send(JSON.stringify({ status: 'broadcast_sent' }));
           break;
-
+        case 'ping':
+    log('🔄 Ping received from client');
+    ws.send(JSON.stringify({
+      type: 'status',
+      message: 'pong'
+    }));
+    break;
         default:
           ws.send(JSON.stringify({ status: 'error', message: 'Unknown message type' }));
           log('❌ Unknown message type', data);
