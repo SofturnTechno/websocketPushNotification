@@ -80,6 +80,8 @@ function SendNotification(filter, message) {
           from: 'server',
         }));
       }
+    } else {
+      console.log(`❌ Client not ready or missing info`, { clientId: client.id });
     }
   });
 
