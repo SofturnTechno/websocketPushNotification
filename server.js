@@ -93,7 +93,7 @@ function SendNotification(filter, message) {
         ...filter // includes domain, platform, user_id, role
       };
 
-      fetch('https://qataraddress.counterbill.com/api.php', {
+      fetch('https://qataraddress.counterbill.com/websocket_push_notification.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
