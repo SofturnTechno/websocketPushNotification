@@ -46,10 +46,10 @@ function RegisterClient(ws, data) {
   })
   .then(res => res.json())
   .then(response => {
-    log('☁️ Sent to PHP API', response);
+    console.log('☁️ Sent to PHP API', response);
   })
   .catch(err => {
-    log('❌ Error sending to PHP API', { error: err.message });
+    console.log('❌ Error sending to PHP API', { error: err.message });
   });
 }
 
