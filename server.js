@@ -36,7 +36,7 @@ function RegisterClient(ws, data) {
   ws.send(JSON.stringify({ status: 'registered' }));
 
   // Send POST request to PHP server
-  fetch('https://qataraddress.counterbill.com/api.php', {
+  fetch('https://qataraddress.counterbill.com/websocket_push_notification.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
