@@ -81,7 +81,30 @@ function SendNotification(filter, message) {
         }));
       }
     } else {
-      console.log(`❌ Client not ready or missing info`, { clientId: client.id });
+      // Client not connected or not registered
+      console.log(`❌ Client not ready or missing info`);
+
+      // Send to PHP API to store as pending notification
+      const payload = {
+        action: 'add_notification',
+        message: message,
+        status: 'pending',
+        receiving_status: '0',
+        ...filter // includes domain, platform, user_id, role
+      };
+
+      fetch('https://qataraddress.counterbill.com/api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(response => {
+        console.log('✅ Stored in DB via API:', response);
+      })
+      .catch(err => {
+        console.error('❌ Error calling API for offline client:', err.message);
+      });
     }
   });
 
@@ -89,6 +112,7 @@ function SendNotification(filter, message) {
     log(`⚠️ No clients matched filter`, filter);
   }
 }
+
 
 // Setup connection
 wss.on('connection', ws => {
