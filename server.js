@@ -27,12 +27,32 @@ function RegisterClient(ws, data) {
     user_id: data.user_id,
     first_name: data.first_name,
     role: data.role,
+    username: data.username || '' // optional if available
   };
 
   clientsInfo.set(ws, userInfo);
   log(`✅ Client Registered`, userInfo);
+
   ws.send(JSON.stringify({ status: 'registered' }));
+
+  // Send POST request to PHP server
+  fetch('https://qataraddress.counterbill.com/api.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'add_client',
+      ...userInfo
+    })
+  })
+  .then(res => res.json())
+  .then(response => {
+    log('☁️ Sent to PHP API', response);
+  })
+  .catch(err => {
+    log('❌ Error sending to PHP API', { error: err.message });
+  });
 }
+
 
 // Broadcast notification to matching clients
 function SendNotification(filter, message) {
@@ -101,7 +121,7 @@ wss.on('connection', ws => {
         case 'ping':
     log('🔄 Ping received from client');
     ws.send(JSON.stringify({
-      type: 'status',
+      type: 'status', 
       message: 'pong'
     }));
     break;
