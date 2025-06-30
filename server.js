@@ -75,7 +75,7 @@ function RegisterClient(ws, data) {
 
       if (match) {
         matchedCount++;
-
+        log(`✅ Client matched filter`, { clientId: client._socket.remoteAddress, info });
         // Prepare the payload (no need to include unnecessary domain/platform/user_id again)
         const payload = {
           action: 'add_notification',
@@ -101,7 +101,7 @@ function RegisterClient(ws, data) {
                 message,
                 from: 'server',
                 insertId: insert_id, // ✅ include the notification insert_id
-                user: info.user_id // include user info for context
+                user_id: info.user_id,
               }));
             } else {
               console.error('❌ API responded with error:', response);
