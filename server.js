@@ -54,32 +54,12 @@ function RegisterClient(ws, data) {
 }
 
 
-// Broadcast notification to matching clients
-function SendNotification(filter, message) {
-  console.log(`📢 Broadcasting Message`, { filter, message });
-
-  let matchedCount = 0;
-// Send to PHP API to store as pending notification
-      const payload = {
-        action: 'add_notification',
-        message: message,
-        status: 'pending',
-        receiving_status: '0',
-        ...filter // includes domain, platform, user_id, role
-      };
-      console.log('📤 Sending to PHP API', payload);
-      fetch('https://qataraddress.counterbill.com/websocket_push_notification.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      .then(res => res.json())
-      .then(response => {
-        console.log('✅ Stored in DB via API:', response);
-      })
-      .catch(err => {
-        console.error('❌ Error calling API for offline client:', err.message);
-      });
+  // Broadcast notification to matching clients
+  function SendNotification(filter, message) {
+    console.log(`📢 Broadcasting Message`, { filter, message });
+    let matchedCount = 0;
+  // Send to PHP API to store as pending notification
+      
 
   wss.clients.forEach(client => {
     if (
@@ -95,23 +75,54 @@ function SendNotification(filter, message) {
 
       if (match) {
         matchedCount++;
-        client.send(JSON.stringify({
-          type: 'notification',
-          message,
-          from: 'server',
-        }));
-      }
-    
-      
 
-      
+        // Prepare the payload (no need to include unnecessary domain/platform/user_id again)
+        const payload = {
+          action: 'add_notification',
+          message: message,
+          clients_id: info.user_id, // ✅ THIS is what PHP needs now
+          status: 'pending',
+          receiving_status: '0'
+        };
+
+        // Send to PHP API and then send WebSocket notification with insert_id
+        fetch('https://qataraddress.counterbill.com/websocket_push_notification.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+          .then(res => res.json())
+          .then(response => {
+            if (response.status === 'success') {
+              const insert_id = response.insert_id;
+
+              client.send(JSON.stringify({
+                type: 'notification',
+                message,
+                from: 'server',
+                insertId: insert_id, // ✅ include the notification insert_id
+                user: info.user_id // include user info for context
+              }));
+            } else {
+              console.error('❌ API responded with error:', response);
+            }
+          })
+          .catch(err => {
+            console.error('❌ Error calling API for client:', err.message);
+          });
+      }
     }
   });
 
   if (matchedCount === 0) {
     log(`⚠️ No clients matched filter`, filter);
   }
-}
+
+
+    if (matchedCount === 0) {
+      log(`⚠️ No clients matched filter`, filter);
+    }
+  }
 
 
 // Setup connection
